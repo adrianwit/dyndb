@@ -32,7 +32,7 @@ import (
 
 
 type User struct {
-	Id int	`autoincrement:"true"`
+	Id int	`primaryKey:"true"`
 	Name string
 }
 
