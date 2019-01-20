@@ -39,11 +39,7 @@ type User struct {
 
 func main() {
 
-	config, err := dsc.NewConfigWithParameters("dyndb", "", "", map[string]interface{}{
-    		"host":   "127.0.0.1",
-    		"dbname": "mydb",
-    		"keyColumnName":"id",
-    })
+	config, err := dsc.NewConfigWithParameters("dyndb", "", "", map[string]interface{}{})
 	if err != nil {
 		log.Fatal(err)
     }
