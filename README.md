@@ -1,8 +1,8 @@
 # Datastore Connectivity for DynamoDB(dyndb)
 
 
-[![Datastore Connectivity library for DynamoDB in Go.](https://goreportcard.com/badge/github.com/adrianwit/dyndbc)](https://goreportcard.com/report/github.com/adrianwit/dyndbc)
-[![GoDoc](https://godoc.org/github.com/adrianwit/dyndbc?status.svg)](https://godoc.org/github.com/adrianwit/dyndbc)
+[![Datastore Connectivity library for DynamoDB in Go.](https://goreportcard.com/badge/github.com/adrianwit/dyndb)](https://goreportcard.com/report/github.com/adrianwit/dyndb)
+[![GoDoc](https://godoc.org/github.com/adrianwit/dyndb?status.svg)](https://godoc.org/github.com/adrianwit/dyndb)
 
 This library is compatible with Go 1.10+
 
@@ -27,7 +27,7 @@ package main
 
 import (
 	"github.com/viant/dsc"
-    _ "github.com/adrianwit/dyndbc"
+    _ "github.com/adrianwit/dyndb"
 )
 
 
@@ -39,7 +39,7 @@ type User struct {
 
 func main() {
 
-	config, err := dsc.NewConfigWithParameters("dyndbc", "", "", map[string]interface{}{
+	config, err := dsc.NewConfigWithParameters("dyndb", "", "", map[string]interface{}{
     		"host":   "127.0.0.1",
     		"dbname": "mydb",
     		"keyColumnName":"id",
