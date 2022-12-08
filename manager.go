@@ -1,12 +1,14 @@
 package dyndb
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/viant/dsc"
+	"github.com/viant/sqlparser"
 	"github.com/viant/toolbox"
 	"strings"
 )
@@ -134,6 +136,12 @@ func (m *manager) ExecuteOnConnection(connection dsc.Connection, sql string, sql
 	if err != nil {
 		return nil, err
 	}
+	if strings.HasPrefix(strings.TrimSpace(strings.ToLower(sql)), "create") {
+		return m.createTableExecution(context.Background(), db, sql)
+	} else if strings.HasPrefix(strings.TrimSpace(strings.ToLower(sql)), "drop") {
+		return m.dropTableExecution(context.Background(), db, sql)
+	}
+
 	parser := dsc.NewDmlParser()
 	statement, err := parser.Parse(sql)
 	if err != nil {
@@ -255,4 +263,78 @@ func (m *manager) tryReadItem(db *dynamodb.DynamoDB, statement *dsc.QueryStateme
 		}
 		return true, nil
 	})
+}
+
+func (m *manager) createTableExecution(ctx context.Context, db *dynamodb.DynamoDB, SQL string) (sql.Result, error) {
+	spec, err := sqlparser.ParseCreateTable(SQL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse SQL: %w", err)
+	}
+	tableName := sqlparser.TableName(spec)
+	info := m.describeTable(db, tableName)
+	if spec.IfDoesExists {
+		if info != nil {
+			return dsc.NewSQLResult(0, 0), nil
+		}
+	}
+
+	capacityUnits := int64(1)
+	input := &dynamodb.CreateTableInput{
+		TableName:             &tableName,
+		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{ReadCapacityUnits: &capacityUnits, WriteCapacityUnits: &capacityUnits},
+	}
+	for _, column := range spec.Columns {
+		attrType, err := databaseAttributeType(column.Type)
+		if err != nil {
+			return nil, err
+		}
+		input.AttributeDefinitions = append(input.AttributeDefinitions, &dynamodb.AttributeDefinition{
+			AttributeName: &column.Name,
+			AttributeType: &attrType,
+		})
+		if key := column.Key; key != "" {
+			key = strings.ToUpper(key)
+			key = strings.TrimSpace(strings.Replace(key, "KEY", "", 1))
+			input.KeySchema = append(input.KeySchema, &dynamodb.KeySchemaElement{
+				AttributeName: &column.Name,
+				KeyType:       &key,
+			})
+		}
+	}
+
+	if _, err = db.CreateTable(input); err != nil {
+		return nil, err
+	}
+	waitForCreateCompletion(db, tableName)
+	return dsc.NewSQLResult(0, 0), nil
+}
+
+func (m *manager) dropTableExecution(ctx context.Context, db *dynamodb.DynamoDB, SQL string) (sql.Result, error) {
+	spec, err := sqlparser.ParseDropTable(SQL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse SQL: %w", err)
+	}
+	tableName := sqlparser.TableName(spec)
+	info := m.describeTable(db, tableName)
+	if spec.IfExists {
+		if info == nil {
+			return dsc.NewSQLResult(0, 0), nil
+		}
+	}
+
+	if _, err = db.DeleteTable(&dynamodb.DeleteTableInput{TableName: &tableName}); err != nil {
+		return nil, err
+	}
+	waitForTableDeletion(db, tableName)
+	return dsc.NewSQLResult(0, 0), nil
+}
+
+func (m *manager) describeTable(db *dynamodb.DynamoDB, tableName string) *dynamodb.TableDescription {
+	var result *dynamodb.TableDescription
+	if output, _ := db.DescribeTable(&dynamodb.DescribeTableInput{
+		TableName: aws.String(tableName),
+	}); output != nil {
+		result = output.Table
+	}
+	return result
 }

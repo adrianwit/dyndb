@@ -95,6 +95,11 @@ func (d *dialect) DropTable(manager dsc.Manager, datastore string, table string)
 	_, err = db.DeleteTable(&dynamodb.DeleteTableInput{
 		TableName: &table,
 	})
+	waitForTableDeletion(db, table)
+	return err
+}
+
+func waitForTableDeletion(db *dynamodb.DynamoDB, table string) {
 	startTime := time.Now()
 	for time.Now().Sub(startTime) < maxWaitTime {
 		_, err := db.DescribeTable(&dynamodb.DescribeTableInput{
@@ -105,7 +110,6 @@ func (d *dialect) DropTable(manager dsc.Manager, datastore string, table string)
 		}
 		time.Sleep(time.Duration(100) * time.Millisecond)
 	}
-	return err
 }
 
 func (d *dialect) CreateTable(manager dsc.Manager, datastore string, table string, specification interface{}) error {
@@ -142,6 +146,11 @@ func (d *dialect) CreateTable(manager dsc.Manager, datastore string, table strin
 		return err
 	}
 
+	waitForCreateCompletion(db, table)
+	return err
+}
+
+func waitForCreateCompletion(db *dynamodb.DynamoDB, table string) {
 	startTime := time.Now()
 	for time.Now().Sub(startTime) < maxWaitTime {
 		output, err := db.DescribeTable(&dynamodb.DescribeTableInput{
@@ -155,7 +164,6 @@ func (d *dialect) CreateTable(manager dsc.Manager, datastore string, table strin
 		}
 		time.Sleep(time.Duration(100) * time.Millisecond)
 	}
-	return err
 }
 
 func (d *dialect) GetDatastores(manager dsc.Manager) ([]string, error) {
