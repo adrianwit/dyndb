@@ -25,7 +25,7 @@ type Music struct {
 func TestManager(t *testing.T) {
 
 	//dsc.Logf = dsc.StdoutLogger
-	config, err := dsc.NewConfigWithParameters("dyndb", "", "aws", map[string]interface{}{})
+	config, err := dsc.NewConfigWithParameters("dyndb", "endpoint=localhost", "aws-e2e", map[string]interface{}{})
 	if !assert.Nil(t, err) {
 		return
 	}
@@ -59,11 +59,12 @@ func TestManager(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		sqlResult, err := manager.Execute("INSERT INTO music(Artist, SongTitle, ReleaseYear, Price)  VALUES(?, ?, ?, ?)",
+		sqlResult, err := manager.Execute("INSERT INTO music(Artist, SongTitle, ReleaseYear, Price, Categories)  VALUES(?, ?, ?, ?, ?)",
 			fmt.Sprintf("Artist%d", i),
 			fmt.Sprintf("Title%d", i),
 			2000+i,
 			0.5+toolbox.AsFloat(i),
+			[]string{"Cat1", "Cat1"},
 		)
 		if !assert.Nil(t, err) {
 			log.Fatal(err)

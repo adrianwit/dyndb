@@ -9,6 +9,8 @@ import (
 	"github.com/viant/dsc"
 	"github.com/viant/toolbox/cred"
 	"github.com/viant/toolbox/secret"
+	"net/url"
+	"strings"
 )
 
 const (
@@ -55,13 +57,28 @@ func (p *connectionProvider) NewConnection() (dsc.Connection, error) {
 	if awsConfig.Region == nil {
 		return nil, fmt.Errorf("region was empty")
 	}
-
+	awsConfig = p.applyOptions(awsConfig)
 	sess := session.Must(session.NewSession())
 	db := dynamodb.New(sess, awsConfig)
 	var connection = &connection{db: db}
 	var super = dsc.NewAbstractConnection(config, p.ConnectionProvider.ConnectionPool(), connection)
 	connection.AbstractConnection = super
 	return connection, nil
+}
+
+func (p *connectionProvider) applyOptions(awsConfig *aws.Config) *aws.Config {
+	if params, _ := url.ParseQuery(p.Config().Descriptor); len(params) > 0 {
+		if endpoint := params.Get("endpoint"); endpoint != "" {
+			if !strings.Contains(endpoint, ":") {
+				endpoint = endpoint + ":8000"
+			}
+			if !strings.Contains(endpoint, "http") {
+				endpoint = "http://" + endpoint
+			}
+			awsConfig = awsConfig.WithEndpoint(endpoint)
+		}
+	}
+	return awsConfig
 }
 
 func newConnectionProvider(config *dsc.Config) dsc.ConnectionProvider {
@@ -103,6 +120,7 @@ func getAWSConfig(credConfig *cred.Config) *aws.Config {
 	if credConfig.Key != "" {
 		awsCredentials := credentials.NewStaticCredentials(credConfig.Key, credConfig.Secret, "")
 		result = aws.NewConfig().WithRegion(credConfig.Region).WithCredentials(awsCredentials)
+
 	} else if credConfig.Region != "" {
 		result.Region = &credConfig.Region
 	}
