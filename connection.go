@@ -7,16 +7,18 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/viant/dsc"
+	"github.com/viant/toolbox"
 	"github.com/viant/toolbox/cred"
 	"github.com/viant/toolbox/secret"
-	"net/url"
 	"strings"
 )
 
 const (
-	keyKey    = "key"
-	secretKey = "secret"
-	regionKey = "region"
+	keyKey      = "key"
+	secretKey   = "secret"
+	regionKey   = "region"
+	endpointKey = "endpoint"
+
 	dbnameKey = "dbname"
 )
 
@@ -67,16 +69,22 @@ func (p *connectionProvider) NewConnection() (dsc.Connection, error) {
 }
 
 func (p *connectionProvider) applyOptions(awsConfig *aws.Config) *aws.Config {
-	if params, _ := url.ParseQuery(p.Config().Descriptor); len(params) > 0 {
-		if endpoint := params.Get("endpoint"); endpoint != "" {
-			if !strings.Contains(endpoint, ":") {
-				endpoint = endpoint + ":8000"
-			}
-			if !strings.Contains(endpoint, "http") {
-				endpoint = "http://" + endpoint
-			}
-			awsConfig = awsConfig.WithEndpoint(endpoint)
+	paramMap := toolbox.MakeMap(p.Config().Descriptor, ":", ",")
+	for k, v := range paramMap {
+		if _, ok := p.Config().Parameters[k]; ok {
+			continue
 		}
+		p.Config().Parameters[k] = v
+	}
+	if p.Config().Has(endpointKey) {
+		endpoint := p.Config().Get(endpointKey)
+		if !strings.Contains(endpoint, ":") {
+			endpoint = endpoint + ":8000"
+		}
+		if !strings.Contains(endpoint, "http") {
+			endpoint = "http://" + endpoint
+		}
+		awsConfig = awsConfig.WithEndpoint(endpoint)
 	}
 	return awsConfig
 }

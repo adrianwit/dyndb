@@ -25,7 +25,7 @@ type Music struct {
 func TestManager(t *testing.T) {
 
 	//dsc.Logf = dsc.StdoutLogger
-	config, err := dsc.NewConfigWithParameters("dyndb", "endpoint=localhost", "aws-e2e", map[string]interface{}{})
+	config, err := dsc.NewConfigWithParameters("dyndb", "endpoint:localhost", "aws-e2e", map[string]interface{}{})
 	if !assert.Nil(t, err) {
 		return
 	}
