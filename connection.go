@@ -69,13 +69,7 @@ func (p *connectionProvider) NewConnection() (dsc.Connection, error) {
 }
 
 func (p *connectionProvider) applyOptions(awsConfig *aws.Config) *aws.Config {
-	paramMap := toolbox.MakeMap(p.Config().Descriptor, ":", ",")
-	for k, v := range paramMap {
-		if _, ok := p.Config().Parameters[k]; ok {
-			continue
-		}
-		p.Config().Parameters[k] = v
-	}
+	p.updateParameters()
 	if p.Config().Has(endpointKey) {
 		endpoint := p.Config().Get(endpointKey)
 		if !strings.Contains(endpoint, ":") {
@@ -86,7 +80,28 @@ func (p *connectionProvider) applyOptions(awsConfig *aws.Config) *aws.Config {
 		}
 		awsConfig = awsConfig.WithEndpoint(endpoint)
 	}
+
+	if p.Config().Has(regionKey) {
+		region := p.Config().Get(regionKey)
+		awsConfig = awsConfig.WithRegion(region)
+	}
+	if p.Config().Has(keyKey) {
+		key := p.Config().Get(keyKey)
+		secret := p.Config().Get(secretKey)
+		c := credentials.NewStaticCredentials(key, secret, "")
+		awsConfig = awsConfig.WithCredentials(c)
+	}
 	return awsConfig
+}
+
+func (p *connectionProvider) updateParameters() {
+	paramMap := toolbox.MakeMap(p.Config().Descriptor, ":", ",")
+	for k, v := range paramMap {
+		if _, ok := p.Config().Parameters[k]; ok {
+			continue
+		}
+		p.Config().Parameters[k] = v
+	}
 }
 
 func newConnectionProvider(config *dsc.Config) dsc.ConnectionProvider {

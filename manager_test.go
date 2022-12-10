@@ -25,7 +25,12 @@ type Music struct {
 func TestManager(t *testing.T) {
 
 	//dsc.Logf = dsc.StdoutLogger
-	config, err := dsc.NewConfigWithParameters("dyndb", "endpoint:localhost", "aws-e2e", map[string]interface{}{})
+	config, err := dsc.NewConfigWithParameters("dyndb", "", "", map[string]interface{}{
+		"endpoint": "localhost",
+		"region":   "us-west-1",
+		"key":      "dummy",
+		"secret":   "dummy",
+	})
 	if !assert.Nil(t, err) {
 		return
 	}
@@ -44,7 +49,6 @@ func TestManager(t *testing.T) {
 		return
 	}
 
-	//Test insert
 	dialect := dsc.GetDatastoreDialect("dyndb")
 	err = dialect.DropTable(manager, "", "music")
 	fmt.Printf("%v\n", err)
