@@ -99,7 +99,7 @@ func (m *manager) runDelete(db *dynamodb.DynamoDB, statement *dsc.DmlStatement, 
 	return 1, err
 }
 
-//runDeleteAll - uses brute force scan and deletion one by one (testing only)
+// runDeleteAll - uses brute force scan and deletion one by one (testing only)
 func (m *manager) runDeleteAll(db *dynamodb.DynamoDB, statement *dsc.DmlStatement, sqlParameters []interface{}) (affected int, err error) {
 	output, err := db.Scan(&dynamodb.ScanInput{
 		TableName: aws.String(statement.Table),
@@ -180,10 +180,13 @@ func (m *manager) ReadAllOnWithHandlerOnConnection(connection dsc.Connection, SQ
 			return err
 		}
 	}
-	projection := strings.Join(statement.ColumnNames(), ", ")
+
+	sel, projection, mapped := normalizeExpr(statement)
 	input := &dynamodb.ScanInput{
-		TableName:            aws.String(statement.Table),
-		ProjectionExpression: aws.String(projection),
+		TableName:                aws.String(statement.Table),
+		ProjectionExpression:     projection,
+		Select:                   sel,
+		ExpressionAttributeNames: mapped,
 	}
 	parameters := toolbox.NewSliceIterator(sqlParameters)
 	criteria, criteriaAttributes, err := getCriteriaExpression(statement.SQLCriteria, parameters)
@@ -194,28 +197,109 @@ func (m *manager) ReadAllOnWithHandlerOnConnection(connection dsc.Connection, SQ
 		input.FilterExpression = criteria
 		input.ExpressionAttributeValues = criteriaAttributes
 	}
-	output, err := db.Scan(input)
-	if err != nil {
-		return err
+
+	if sel != nil {
+		return m.handleAggregation(db, input, statement, readingHandler)
 	}
-	if len(output.Items) == 0 {
-		return nil
-	}
-	for _, item := range output.Items {
-		scanner := dsc.NewSQLScanner(statement, m.Config(), nil)
-		scanner.Values = make(map[string]interface{})
-		if err := dynamodbattribute.UnmarshalMap(item, &scanner.Values); err != nil {
-			return err
-		}
-		toContinue, err := readingHandler(scanner)
+
+	var lastEvaluatedKey map[string]*dynamodb.AttributeValue
+	for {
+		output, err := db.Scan(input)
 		if err != nil {
 			return err
 		}
-		if !toContinue {
-			break
+		if len(statement.Columns) == 0 && len(output.Items) > 0 {
+			for key := range output.Items[0] {
+				statement.Columns = append(statement.Columns, &dsc.SQLColumn{Name: key})
+			}
+		}
+		if len(output.Items) == 0 {
+			return nil
+		}
+		for _, item := range output.Items {
+			scanner := dsc.NewSQLScanner(statement, m.Config(), nil)
+			scanner.Values = make(map[string]interface{})
+			if err := dynamodbattribute.UnmarshalMap(item, &scanner.Values); err != nil {
+				return err
+			}
+			toContinue, err := readingHandler(scanner)
+			if err != nil {
+				return err
+			}
+			if !toContinue {
+				break
+			}
+		}
+
+		lastEvaluatedKey = output.LastEvaluatedKey
+		if lastEvaluatedKey == nil {
+			return nil
+		}
+	}
+}
+
+func (m *manager) handleAggregation(db *dynamodb.DynamoDB, input *dynamodb.ScanInput, statement *dsc.QueryStatement, readingHandler func(scanner dsc.Scanner) (toContinue bool, err error)) error {
+	statement.Columns[0].Name = statement.Columns[0].Alias
+	var lastEvaluatedKey map[string]*dynamodb.AttributeValue
+	var count int
+	for {
+		output, err := db.Scan(input)
+		if err != nil {
+			return err
+		}
+		lastEvaluatedKey = output.LastEvaluatedKey
+		if output.Count != nil {
+			count += int(*output.Count)
+		}
+		if lastEvaluatedKey == nil {
+			scanner := dsc.NewSQLScanner(statement, m.Config(), nil)
+			alias := statement.Columns[0].Alias
+			if alias == "" {
+				alias = statement.Columns[0].Expression
+			}
+			scanner.Values = map[string]interface{}{
+				alias: count,
+			}
+			_, err = readingHandler(scanner)
+			return err
 		}
 	}
 	return nil
+}
+
+func normalizeExpr(statement *dsc.QueryStatement) (*string, *string, map[string]*string) {
+	var result = make([]string, 0)
+	var sel, proj *string
+	var mapped map[string]*string
+	columnNames := statement.ColumnNames()
+	if len(statement.Columns) > 0 {
+		if strings.HasPrefix(strings.ToLower(statement.Columns[0].Expression), "count") {
+			sel = aws.String("COUNT")
+		}
+	}
+	if sel == nil {
+		for _, name := range columnNames {
+			switch name {
+			case "Date":
+				name = "#Date"
+				if len(mapped) == 0 {
+					mapped = make(map[string]*string)
+				}
+				mapped["#Date"] = aws.String("Date")
+			case "User":
+				name = "#User"
+				if len(mapped) == 0 {
+					mapped = make(map[string]*string)
+				}
+				mapped["#User"] = aws.String("User")
+			}
+			result = append(result, name)
+		}
+	}
+	if len(result) > 0 {
+		proj = aws.String(strings.Join(result, ","))
+	}
+	return sel, proj, mapped
 }
 
 func (m *manager) tryReadItem(db *dynamodb.DynamoDB, statement *dsc.QueryStatement, parameters []interface{}, readingHandler func(scanner dsc.Scanner) (toContinue bool, err error)) (bool, error) {
